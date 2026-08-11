@@ -1,0 +1,36 @@
+{
+    "compilerOptions": {
+        "target": "ES2015",
+        "module": "Node16",
+        "noEmit": true,
+        "ignoreDeprecations": "6.0",
+        // 启用所有严格类型检查选项
+        "strict": true,
+        // 禁止this 值为 any
+        "noImplicitThis": true,
+        "allowJs": true,
+        "strictNullChecks": true,
+        "esModuleInterop": true,
+        "moduleResolution": "node16",
+        "experimentalDecorators": true,
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "src/*"
+            ]
+        }
+    },
+    "include": [
+        "src/**/*.js",
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.vue",
+        "src/types/**/*.d.ts",
+        "common/**/*.js"
+    ],
+    "vueCompilerOptions": {
+        "extensions": [
+            ".vue"
+        ]
+    }
+}

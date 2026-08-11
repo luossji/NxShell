@@ -1,0 +1,10 @@
+{
+  "name": "nxshell-native-pack",
+  "private": true,
+  "description": "Native runtime modules for NxShell packaging",
+  "license": "ISC",
+  "dependencies": {
+    "serialport": "^9.2.8",
+    "node-pty": "^0.10.1"
+  }
+}

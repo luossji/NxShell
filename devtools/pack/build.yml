@@ -1,0 +1,52 @@
+appId: org.nxshell.shell
+productName: NxShell
+copyright: Copyright © 2020-2021 NxShell Team
+artifactName: ${productName}-${arch}-${os}-${version}-${env.buildTimes}.${ext}
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+extraResources:
+  - from: ./.pack/native/node_modules
+    to: node_modules
+  - from: ./devtools/pack/resources/nxshell.png
+    to: nxshell.png
+  - from: ./src/tools/plugins
+    to: plugins
+    filter:
+      - "**/*.example"
+  - from: ./src/tools/freerdp
+    to: freerdp
+files:
+  - filter: "!native"
+directories:
+  buildResources: ./devtools/pack/resources
+  output: ./dist/apppackage
+  app: ./.pack
+target:
+  - target: zip
+win:
+  icon: ./devtools/pack/resources/appx/Square512x512Logo.png
+  target:
+   - appx
+   - nsis
+appx:
+  publisherDisplayName: nxshell
+  identityName: 64354nxshell.nxshell
+  publisher: CN=13CA10C8-3E4F-483D-844A-FB63CF8E93F7
+  applicationId: nxshell.com
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  include: ./devtools/pack/installer.nsh
+linux:
+  target:
+   - AppImage
+   - snap
+   - deb
+  icon: ./devtools/pack/resources/icons
+  category: Development
+mac:
+  target: dmg
+  icon: ./devtools/pack/resources/mac/icon-128.icns
+  category: public.app-category.developer-tools
+afterPack: ./devtools/pack/afterPackHook.js
+beforeBuild: ./devtools/pack/beforeBuildHook.js

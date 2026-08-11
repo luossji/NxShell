@@ -1,0 +1,35 @@
+{
+  "name": "NxShell",
+  "version": "1.9.6",
+  "description": "Next Shell for PC",
+  "main": "index.js",
+  "scripts": {
+    "build": "electron-builder --config build.yml",
+    "build:debug": "DEBUG=electron-builder electron-builder --config build.yml"
+  },
+  "author": {
+    "name": "NxShell Team",
+    "email": "tangch318@gmail.com"
+  },
+  "license": "ISC",
+  "homepage": "https://gitee.com/luossji/nxshell",
+  "repository": "https://gitee.com/luossji/nxshell",
+  "keywords": [
+    "terminal",
+    "tools",
+    "nxshell",
+    "sftp",
+    "shell",
+    "ftp",
+    "webdav"
+  ],
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@electron/remote": "2.0.8",
+    "cli-progress": "^3.9.1",
+    "electron": "17.4.1",
+    "electron-builder": "^23.0.2",
+    "shelljs": "^0.8.4",
+    "ssh2-sftp-client": "^7.0.3"
+  }
+}

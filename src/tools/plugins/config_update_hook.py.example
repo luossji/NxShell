@@ -1,0 +1,89 @@
+# coding=utf8
+"""
+NxShell配置更新回调， 自动备份到gitee仓库
+-------------------
+- 该模块定义了一个回调函数，当NxShell的配置发生更新时会被调用。
+- 回调函数会接收一个文件参数，表示更新后的配置文件。
+- 将更新后的配置文件备份到gitee仓库中，以确保配置的安全和版本控制。
+"""
+import os
+import argparse
+import urllib.request
+import urllib.parse
+import urllib.error
+import json
+import base64
+
+git_access_token = "xxx"  # 替换为你的gitee访问令牌
+git_repo_owner = "repo_owner"
+git_repo_name = "repo_name"
+branch_name = "master"  # 替换为你的分支名称
+session_backup_name = "sessions.backup"
+
+
+def get_backup_file_name(config_file):
+    file_name = os.path.basename(config_file)
+    if "SESSIONS" in file_name.upper():
+        return session_backup_name
+    return file_name
+
+
+def backup_config_to_gitee(config_file):
+    with open(config_file, 'rb') as f:
+        content = f.read()
+
+    file_name = get_backup_file_name(config_file)
+    encoded_name = urllib.parse.quote(file_name)
+    api_url = f"https://gitee.com/api/v5/repos/{git_repo_owner}/{git_repo_name}/contents/{encoded_name}"
+    data = {
+        "access_token": git_access_token,
+        "message": f"Backup config file {file_name}",
+        "content": base64.b64encode(content).decode("ascii"),
+        "branch": branch_name
+    }
+
+    req = urllib.request.Request(
+        api_url,
+        data=urllib.parse.urlencode(data).encode("utf-8"),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req) as response:
+            response_data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        if error.code != 400:
+            raise
+
+        sha_req = urllib.request.Request(
+            f"{api_url}?access_token={git_access_token}&ref={branch_name}",
+            method="GET"
+        )
+        with urllib.request.urlopen(sha_req) as response:
+            remote_file = json.loads(response.read().decode("utf-8"))
+
+        data["sha"] = remote_file["sha"]
+        req = urllib.request.Request(
+            api_url,
+            data=urllib.parse.urlencode(data).encode("utf-8"),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="PUT"
+        )
+        with urllib.request.urlopen(req) as response:
+            response_data = json.loads(response.read().decode("utf-8"))
+
+    print(f"配置文件 {file_name} 已成功备份到gitee仓库，URL: {response_data['content']['download_url']}")
+    return response_data
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="NxShell配置更新回调")
+    parser.add_argument("file", help="更新后的配置文件路径")
+    args = parser.parse_args()
+
+    # 获取更新后的配置文件路径
+    config_file = args.file
+
+    backup_config_to_gitee(config_file)
+
+    print(f"配置文件 {config_file} 已成功备份到gitee仓库。")
