@@ -936,6 +936,7 @@ export default {
 			color: var(--n-text-color-base);
 			background-color: var(--n-bg-color-light);
 			margin-right: 5px;
+			user-select: text;
 		}
 
 		.host-tools {

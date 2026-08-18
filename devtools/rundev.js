@@ -33,6 +33,15 @@ if (!fs.existsSync(electronCmd)) {
     throw new Error(`Can not find root electron executable at ${electronCmd}`)
 }
 
+// 开发模式下同样需要生成 version 信息，与打包流程保持一致
+const versionDir = path.join(coreRoot, "src", "version")
+fs.mkdirSync(versionDir, { recursive: true })
+fs.writeFileSync(path.join(versionDir, "version.json"), JSON.stringify({
+    version: require("../package.json").version,
+    portable: false,
+    weblink: "https://gitee.com/luossji"
+}))
+
 process.chdir(coreRoot)
 console.log("current dir:", process.cwd())
 
