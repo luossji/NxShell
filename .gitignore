@@ -1,1 +1,4 @@
 node_modules/
+.pack/
+.DS_Store
+dist/
