@@ -2,6 +2,7 @@ const {webContents, BrowserWindow} = require("electron");
 const {EventEmitter} = require("events");
 
 const AppRPC = require("./AppRPC");
+const timeline = require("../utils/startupTimeline");
 
 const WINDOW_TYPE = {
     MAIN_WINDOW: "mainWindow",
@@ -157,32 +158,48 @@ const windowProviders = {
         }
 
         let window = new BrowserWindow(options);
+        timeline.mark("new BrowserWindow() returned", {show: options.show, transparent});
         if (transparent) {
             // window.setIgnoreMouseEvents(true);
         }
 
-        const showWindow = () => {
+        const showWindow = (label) => {
             if (!window.isDestroyed() && !window.isVisible()) {
                 window.show();
+                timeline.mark("window.show() called", label);
             }
         };
 
+        // 启动追踪时，把渲染进程以 [startup] 开头的日志转发到主进程标准输出，
+        // 这样一条终端上就能看到主/渲染两个进程交错的完整时间线
+        if (timeline.ENABLED) {
+            window.webContents.on("console-message", (event, level, message, line, sourceId) => {
+                if (typeof message === "string" && message.indexOf("[startup]") === 0) {
+                    console.log(message);
+                }
+            });
+        }
+
         window.once("ready-to-show", () => {
-            showWindow();
+            timeline.mark("event ready-to-show");
+            showWindow("ready-to-show");
         });
 
         window.webContents.once("dom-ready", () => {
-            showWindow();
+            timeline.mark("event webContents dom-ready");
+            showWindow("dom-ready");
         });
 
         // In packaged builds, ready-to-show can be unreliable with custom protocols.
         // Fall back to showing the window once the main frame finishes loading.
         window.webContents.once("did-finish-load", () => {
-            showWindow();
+            timeline.mark("event did-finish-load");
+            showWindow("did-finish-load");
         });
 
         window.webContents.once("did-stop-loading", () => {
-            showWindow();
+            timeline.mark("event did-stop-loading");
+            showWindow("did-stop-loading");
         });
 
         window.webContents.on("did-fail-load", (event, errorCode, errorDescription, validatedURL) => {

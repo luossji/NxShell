@@ -6,6 +6,7 @@ const AppIPC = require("./AppIPC");
 const {ChannelServer, RPCServer, dispatch} = require("./AppRPC");
 const {registerWindowProvider} = require("./AppViewProvider");
 const CoreUI = require("./CoreUI");
+const timeline = require("../utils/startupTimeline");
 
 let initialized = false;
 let appInstances = {};
@@ -132,8 +133,10 @@ async function initialize() {
 
     // 扫描已安装的应用
     await AppPackageManager.scanInstalledApp();
+    timeline.mark("scanInstalledApp() done");
     // 安装应用协议
     AppPackageManager.setupAppProtocol();
+    timeline.mark("setupAppProtocol() done");
 
     initialized = true;
 }

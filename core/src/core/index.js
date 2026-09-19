@@ -1,6 +1,11 @@
 const {app, protocol, net, BrowserWindow} = require("electron");
 const { report_app_statis } = require('../utils/collect');
 const { check_app_update } = require('./AppUpdate');
+const timeline = require('../utils/startupTimeline');
+
+timeline.header("main");
+timeline.mark("main-entry-required (electron/collect/AppUpdate/remote 已加载)");
+
 require('@electron/remote/main').initialize();
 
 const Core = require("./Core");
@@ -57,15 +62,19 @@ module.exports = {
         protocol.registerSchemesAsPrivileged([
             {scheme: PROTOCOL_APP, privileges: {standard: true, secure: true}}
         ]);
+        timeline.mark("register-schemes-done, waiting app.whenReady()");
         // 等待electron完成初始化
         await app.whenReady();
+        timeline.mark("app.whenReady() resolved");
 
         // 初始化核心部分
         await Core.initialize();
+        timeline.mark("Core.initialize() resolved");
 
         // 核心初始化完成后，总是启动Shell
         // 启动Shell程序，并将应用启动参数带入到Shell
         await open_shell_instance();
+        timeline.mark("open_shell_instance() resolved (窗口已创建、shell 服务已 fork)");
 
         // process macos reopen case
         process_macos_acitve_event();
