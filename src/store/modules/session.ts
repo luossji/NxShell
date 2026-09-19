@@ -32,6 +32,8 @@ export interface ITreeNode {
 const useSessionStore = defineStore('session', () => {
 		const group = ref<IGroupProps[]>([])
 		const menuTree = ref<IMenuNode[]>([])
+		// 菜单树重建计数，外部可据此在重建后重新应用搜索过滤
+		const treeVersion = ref(0)
 		const search = ref<boolean>(false)
 		const currentNode = reactive<ITreeNode>({
 			sessionId: undefined,
@@ -89,15 +91,41 @@ const useSessionStore = defineStore('session', () => {
 				if (treeNode.isFolder) {
 					process(cfgNode.subSessions, children, keyword)
 					treeNode.children = children
-					if (!keyword) {
-						const groupItem = { value: id, label: name }
-						group.value.push(groupItem)
-					}
 				}
 				if (matchFunction(name, keyword) || children.length > 0) {
 					treeList.push(treeNode)
 				}
 			}
+		}
+
+		/**
+		 * 收集目录节点，生成「分组」下拉选项
+		 *
+		 * @param sessionConfigList 待遍历的会话配置列表
+		 */
+		function collectGroups(sessionConfigList: any[] = []) {
+			for (const cfgNode of sessionConfigList) {
+				if (cfgNode.type !== 'folder') {
+					continue
+				}
+				// 保持原有顺序：先子级目录，再当前目录
+				collectGroups(cfgNode.subSessions)
+				group.value.push({ value: cfgNode._id, label: cfgNode.name })
+			}
+		}
+
+		/**
+		 * 仅刷新「分组」下拉选项，不重建菜单树
+		 *
+		 * 用于「查看会话属性 / 编辑会话」等只需分组数据的场景。
+		 * 菜单树重建会让 el-tree 重新创建节点（节点 visible 恢复为 true），
+		 * 导致左侧搜索框的过滤结果被清空并显示全部会话。
+		 *
+		 * @param sessionConfigList 会话配置列表，缺省时重新拉取
+		 */
+		function refreshGroups(sessionConfigList?: any[]) {
+			group.value.splice(0)
+			collectGroups(sessionConfigList ?? sessionManager.getSessionConfigs())
 		}
 
 		/**
@@ -111,10 +139,13 @@ const useSessionStore = defineStore('session', () => {
 				menuTree.value.splice(0, menuTree.value.length)
 			}
 			const sessionConfigs = sessionManager.getSessionConfigs()
+			// 刷新分组下拉选项
+			refreshGroups(sessionConfigs)
 			// 清空数组
-			group.value.splice(0)
 			menuTree.value.splice(0)
 			process(sessionConfigs, menuTree.value, keyword)
+			// 通知外部菜单树已重建（el-tree 会重建节点，过滤状态需重新应用）
+			treeVersion.value++
 		}
 
 		/**
@@ -154,10 +185,12 @@ const useSessionStore = defineStore('session', () => {
 		return {
 			group,
 			menuTree,
+			treeVersion,
 			currentNode,
 			keyboardToAll,
 			updateSendToAllXterm,
 			updateProcess,
+			refreshGroups,
 			appendSessionConfig,
 			updateCurrentNode
 		}

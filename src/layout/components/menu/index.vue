@@ -104,7 +104,7 @@ const menuProps = reactive({
 const nxTabStore = useNxTabsStore()
 const sessionStore = useSessionStore()
 const {} = storeToRefs(nxTabStore)
-const { menuTree, currentNode } = storeToRefs(sessionStore)
+const { menuTree, currentNode, treeVersion } = storeToRefs(sessionStore)
 const proxy = getCurrentInstance().proxy
 const sessionManager = proxy.$sessionManager
 const sessionModal = shallowRef()
@@ -479,6 +479,17 @@ const menuSearch = (value, data) => {
 
 watch(searchKeywords, (keywords) => {
 	sessionTreeRef.value?.filter(keywords)
+})
+
+/**
+ * 菜单树重建后（新增/删除/重命名/拖拽会话、导入配置等）el-tree 会重新创建节点，
+ * 节点的过滤状态会被重置为可见，这里重新应用当前搜索词，避免过滤结果被清空。
+ */
+watch(treeVersion, () => {
+	if (!searchKeywords.value) {
+		return
+	}
+	nextTick(() => sessionTreeRef.value?.filter(searchKeywords.value))
 })
 
 onMounted(() => {
