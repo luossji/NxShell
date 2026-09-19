@@ -287,7 +287,7 @@ const defaultForm = {
 	proxyHost: "",
 	proxyPort: 1080,
 	forward: "none",
-	sftpDirt: "/",
+	sftpDirt: "~",
 	keepAliveInterval: 60,
 	keepAliveCountMax: 3,
 	readyTimeout: 20000,

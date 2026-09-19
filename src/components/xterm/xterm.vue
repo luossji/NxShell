@@ -175,6 +175,18 @@ export default {
 				this.$emit("titleChange", title)
 			})
 
+			// OSC 7：远端 shell 在每次 prompt 时用 `ESC ] 7 ; file://HOST/PATH BEL` 上报
+			// 交互 shell 的真实工作目录（PATH 百分号编码，终端不可见）。客户端消费它，
+			// 拿到精确 cwd，供打开 SFTP 时定位初始目录——比从终端标题里猜路径更准。
+			// 远端未装 shell 集成时本 handler 永远收不到，调用方回落到标题路径。
+			this.terminal.parser.registerOscHandler(7, (data) => {
+				const cwd = this.parseOsc7Cwd(data)
+				if (cwd) {
+					this.$emit("cwdChange", cwd)
+				}
+				return true
+			})
+
 			this.terminal.onLineFeed((e) => {
 				if (this.logging) {
 					this.$emit("line-data", this.getLineString())
@@ -230,6 +242,34 @@ export default {
 	methods: {
 		onXtermFocus() {
 			this.$emit("xterm-focus")
+		},
+		parseOsc7Cwd(data) {
+			if (!data || typeof data !== "string") {
+				return ""
+			}
+			let payload = data
+			// 不同实现的 handler 可能把 "7;" 前缀也带进 data，统一剥掉
+			if (payload.startsWith("7;")) {
+				payload = payload.slice(2)
+			}
+			// 负载形如 file://HOST/PATH：HOST 段可能为空（file:///Users/...），
+			// PATH 是百分号编码的绝对路径。带 HOST 时很多实现把路径首斜杠编码成 %2F，
+			// 解码后变成 "//..."，多出来的那个斜杠是 URI 层级分隔符，不是路径本身 → 去掉一个。
+			const m = payload.match(/^file:\/\/([^/]*)(\/.*)$/)
+			if (!m) {
+				return ""
+			}
+			const host = m[1]
+			let path
+			try {
+				path = decodeURIComponent(m[2])
+			} catch (e) {
+				path = m[2]
+			}
+			if (host && path.charAt(0) === "/" && path.charAt(1) === "/") {
+				path = path.slice(1)
+			}
+			return path && path.charAt(0) === "/" ? path : ""
 		},
 		write(text) {
 			if (!this.terminal) {

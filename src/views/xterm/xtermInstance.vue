@@ -37,6 +37,7 @@
 			@termdata="onXtermData"
 			@resize="onXtermResize"
 			@titleChange="onTitleChange"
+			@cwdChange="onCwdChange"
 			@shortcut="handleShortCutEvent"
 			v-context-menu="xtermMenu"
 			:options="options"
@@ -81,8 +82,13 @@ export default {
 			backgroundColor: "#000",
 			isComponentAlive: true,
 			sessionInstance: null,
-			currentDirectory: "",
-			pendingCwdRequest: null,
+			// 当前目录来源（优先级从高到低）：
+			//   1) cwd  —— OSC 7 上报的交互 shell 真实工作目录（最准，需远端装 shell 集成）
+			//   2) title —— 终端标题里解析出的路径（onTitleChange -> extractPathFromTerminalTitle）
+			// 打开 SFTP 时优先用 cwd，拿不到再回落 title，最后回落 sftpDirt。
+			// 已不再向 shell 注入 printf 探测（会回显到终端里）。
+			cwd: "",
+			title: "",
 			enableSendToAllTerm: false,
 			xtermMenu: [
 				{
@@ -399,96 +405,18 @@ export default {
 
 			const sessionConfig = this.$sessionManager.getSessionConfigByInstanceId(this.sessionInstanceId)
 			let sftCfg = { ...sessionConfig }
-			if (sessionConfig?.config?.protocal === "ssh" && this.isMacOSSession(sessionConfig)) {
-				await this.requestCurrentDirectoryFromShell(sessionInstance)
+			// 优先级：OSC 7 真实 cwd > 终端标题路径 > 用户显式配置的初始目录 > 家目录(~)
+			const resolved = this.cwd || this.extractPathFromTerminalTitle(this.title)
+			let fallback = sftCfg.config.sftpDirt
+			// 历史上 sftpDirt 默认是 "/"（root），但「不知道当前目录时」正确语义是家目录，
+			// 所以把 "/" 和空值都归一为 "~"（SFTP 层会 realpath('.') 展开成 home）。
+			// 用户显式设的非 "/" 目录（如 /data）仍被尊重。
+			if (!fallback || fallback === "/") {
+				fallback = "~"
 			}
-			const sftpDirt = this.getSftpOpenDirectory(this.currentDirectory || this.title, sftCfg.config.sftpDirt)
+			const sftpDirt = resolved || fallback
 			sftCfg.config = { ...sftCfg.config, sftpDirt: sftpDirt, connId: connId }
 			await this.$sessionManager.createSFTPSessionInstance(sftCfg)
-		},
-		isMacOSSession(sessionConfig) {
-			const system = sessionConfig?.config?.system?.toLowerCase?.() || ""
-			return ["mac", "macos", "darwin", "osx", "apple"].some((keyword) => system.includes(keyword))
-		},
-		async requestCurrentDirectoryFromShell(sessionInstance) {
-			if (!sessionInstance || !this.iconv_to_charset) {
-				return ""
-			}
-
-			if (this.pendingCwdRequest) {
-				return await this.pendingCwdRequest.promise
-			}
-
-			let resolveRequest = null
-			const promise = new Promise((resolve) => {
-				resolveRequest = resolve
-			})
-
-			const timeout = setTimeout(() => {
-				if (this.pendingCwdRequest) {
-					this.pendingCwdRequest = null
-				}
-				resolveRequest(this.currentDirectory || "")
-			}, 1200)
-
-			this.pendingCwdRequest = {
-				buffer: "",
-				resolve: (cwd) => {
-					clearTimeout(timeout)
-					this.pendingCwdRequest = null
-					resolveRequest(cwd)
-				},
-				promise
-			}
-
-			// Ask the active interactive shell to print a unique marker-wrapped pwd result.
-			this.iconv_to_charset.write("printf '__NXSHELL_CWD_BEGIN__%s__NXSHELL_CWD_END__\\n' \"$PWD\"\r")
-
-			return await promise
-		},
-		captureCurrentDirectoryFromShellOutput(data) {
-			if (!this.pendingCwdRequest) {
-				return
-			}
-
-			const chunk = typeof data === "string" ? data : data?.toString?.("utf8") || ""
-			if (!chunk) {
-				return
-			}
-
-			this.pendingCwdRequest.buffer += chunk
-			if (this.pendingCwdRequest.buffer.length > 4096) {
-				this.pendingCwdRequest.buffer = this.pendingCwdRequest.buffer.slice(-4096)
-			}
-
-			const beginMarker = "__NXSHELL_CWD_BEGIN__"
-			const endMarker = "__NXSHELL_CWD_END__"
-			const endIndex = this.pendingCwdRequest.buffer.lastIndexOf(endMarker)
-			if (endIndex === -1) {
-				return
-			}
-
-			const beginIndex = this.pendingCwdRequest.buffer.lastIndexOf(beginMarker, endIndex)
-			if (beginIndex === -1) {
-				return
-			}
-
-			const cwd = this.pendingCwdRequest.buffer.slice(beginIndex + beginMarker.length, endIndex).trim()
-			if (cwd) {
-				this.currentDirectory = cwd
-				this.title = cwd
-				this.$emit("titleChange", { sessionId: this.sessionInstanceId, title: cwd })
-			}
-
-			this.pendingCwdRequest.resolve(cwd)
-		},
-		getSftpOpenDirectory(title, fallback) {
-			const currentPath = this.extractPathFromTerminalTitle(title)
-			if (currentPath) {
-				return currentPath
-			}
-
-			return fallback || "/"
 		},
 		extractPathFromTerminalTitle(title) {
 			if (!title || typeof title !== "string") {
@@ -540,7 +468,6 @@ export default {
 			const xzm = this.loadXzmode()
 			this.xzm = xzm
 			this.sessionInstance.on("data", (data) => {
-				this.captureCurrentDirectoryFromShellOutput(data)
 				//this.$refs.xterm.$emit("data", data);
 				xzm.consume(data)
 				this.sessionConnect = true
@@ -711,6 +638,12 @@ export default {
 			const currentPath = this.extractPathFromTerminalTitle(title)
 			this.title = currentPath
 			this.$emit("titleChange", { sessionId: this.sessionInstanceId, title: currentPath })
+		},
+		onCwdChange(cwd) {
+			if (cwd && typeof cwd === "string") {
+				this.cwd = cwd
+				this.$emit("cwdChange", { sessionId: this.sessionInstanceId, cwd: cwd })
+			}
 		},
 		handleCopy() {
 			let s = this.$refs.xterm.getSelection()
