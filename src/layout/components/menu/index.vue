@@ -158,6 +158,11 @@ const handleSessionTreeContextMenu_Paste = () => {
 		} else {
             sessionConfig = sessionConfig.duplicate()
             sessionConfig.name = `${sessionConfig.name} (Copy)`
+            // 会话显示名（SessionConfig.name）与属性弹窗的「主机名称」（config.hostName）是两份数据，
+            // 不同步的话属性弹窗里看到的还是原名，而且保存时会用 hostName 覆盖 name，把 (Copy) 冲掉
+            if (sessionConfig.config && "hostName" in sessionConfig.config) {
+                sessionConfig.config.hostName = sessionConfig.name
+            }
         }
 		sessionStore.appendSessionConfig(sessionConfig)
 	} catch (error) {
