@@ -12,7 +12,8 @@ import { getSessionFactory, SessionInterface, SESSION_TYPES } from "./session";
 import { getNodeSessionInstanceByUUID } from "./nxsys/nodes";
 
 import Storage from "./storage";
-import _ from "lodash";
+import cloneDeep from "lodash/cloneDeep";
+import isEqual from "lodash/isEqual";
 import { v4 as uuidv4 } from "uuid";
 
 import * as EventBus from "./eventbus";
@@ -192,7 +193,7 @@ export class SessionConfig extends EventEmitter {
             let config = new SessionConfig(
                 parent.name,
                 parent.type,
-                parent.config ? _.cloneDeep(parent.config) : parent.config,
+                parent.config ? cloneDeep(parent.config) : parent.config,
                 parent.description
                 /* TODO: add uuid */
             )
@@ -540,7 +541,7 @@ class SessionManager extends EventEmitter {
         const nextConfig = configParam || sessCfg.config;
         const hasChanges = sessCfg.name !== name
             || sessCfg.description !== description
-            || !_.isEqual(sessCfg.config, nextConfig)
+            || !isEqual(sessCfg.config, nextConfig)
             || currentParent._id !== targetParent._id;
 
         if (!hasChanges) {

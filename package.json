@@ -13,7 +13,7 @@
         "build_pack": "node devtools/buildpack.js",
         "rebuild": "npm rebuild serialport node-pty --runtime=electron --target=17.4.1 --disturl=https://electronjs.org/headers --build-from-source --foreground-scripts",
         "build-service": "webpack-cli --config webpack.conf.js",
-        "svgo": "svgo -f src/icons/svg --config=./svgo.config.js"
+        "svgo": "svgo -f src/icons/svg --config=./svgo.config.js && svgo -f src/icons/svg-file --config=./svgo.config.js"
     },
     "dependencies": {
         "@better-scroll/core": "^2.5.0",
