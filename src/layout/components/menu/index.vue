@@ -131,8 +131,35 @@ const clipboard = reactive({
 	operate: ""
 })
 
+/**
+ * 取会话的实时配置
+ *
+ * 菜单树节点里存的是「构建菜单树那一刻抓的配置快照」，而属性弹窗保存时会替换
+ * SessionConfig.config 对象（旧快照仍指向旧对象）。一旦菜单树没及时重建，
+ * 双击连接/打开 SFTP 就会用过期配置（典型表现：改了主机 IP 仍连旧 IP）。
+ * 所以这里统一按 id / uuid 回查实时配置，拿不到才退回传入的快照。
+ *
+ * @param {Object} sessionData 菜单树节点数据或会话配置
+ * @returns {Object|null} 实时会话配置
+ */
+const resolveLiveSessionConfig = (sessionData) => {
+	if (!sessionData) {
+		return null
+	}
+	// 已经是 SessionConfig
+	if (typeof sessionData.update === "function" && sessionData.config) {
+		return sessionData
+	}
+	const sessionId = sessionData._id ?? sessionData.id
+	return (
+		(sessionId !== undefined && sessionId !== null ? sessionManager.getSessionConfigById(sessionId) : null) ||
+		(sessionData.uuid ? sessionManager.getSessionConfigByUUID(sessionData.uuid) : null) ||
+		null
+	)
+}
+
 const handleOpenSFTP = (data) => {
-	sessionManager.createSFTPSessionInstance(data)
+	sessionManager.createSFTPSessionInstance(resolveLiveSessionConfig(data) || data)
 }
 
 // 复制/剪切会话
@@ -209,7 +236,8 @@ const handleHostOpen = async (sessionData) => {
 		// 目录节点不启动会话实例
 		return
 	}
-	await sessionManager.createSessionInstance(sessionData)
+	// 用实时配置建连，避免用到过期的菜单树快照
+	await sessionManager.createSessionInstance(resolveLiveSessionConfig(sessionData) || sessionData)
 }
 
 /**
