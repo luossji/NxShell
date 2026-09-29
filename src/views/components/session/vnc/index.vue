@@ -106,7 +106,9 @@ import SessionCredentialsFields from '../components/SessionCredentialsFields.vue
 import { defaultForm } from './constants'
 
 const { t } = useI18n()
-const isMac = process.platform === 'darwin'
+// 渲染层 webpack 把 process polyfill 成只有 env 的对象，platform 不可用；
+// 与 NxLayout.vue 一致用 userAgent 判断（参考 src/layout/NxLayout.vue:34）
+const isMac = /macintosh/i.test(navigator.userAgent)
 const emits = defineEmits(['ok', 'cancel'])
 const visible = ref(false)
 const telnetFormRef = ref()

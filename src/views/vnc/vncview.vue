@@ -185,7 +185,8 @@ export default {
 			this.resizeObject.observe(this.$refs.screen)
 		},
 		launchNativeClient() {
-			if (process.platform !== 'darwin') {
+			// 渲染层 process.platform 不可用（webpack polyfill 只有 env），用 userAgent 判断
+			if (!/macintosh/i.test(navigator.userAgent)) {
 				this.warn(this.$t('home.session-instance.vnc-native-unsupported'))
 				return
 			}
