@@ -151,6 +151,11 @@
             "default-session-name": "Unnamed host",
             "base": {
                 "title": "Basic config",
+                "vnc-client": {
+                    "title": "Connect via",
+                    "embed": "Embedded window (noVNC)",
+                    "native": "macOS Screen Sharing app (best experience)"
+                },
                 "host-name": {
                     "title": "Host name",
                     "placeholder": "Please enter hostname",
@@ -452,6 +457,9 @@
         },
         "session-instance": {
             "duplicate-session": "Duplicate session",
+            "vnc-native-launched": "macOS Screen Sharing launched: {target}, please operate in the opened window",
+            "vnc-native-unsupported": "The native Screen Sharing mode is only available on macOS",
+            "vnc-native-failed": "Failed to launch macOS Screen Sharing. Please make sure Screen Sharing is enabled in System Settings",
             "reconnect": "Reconnect",
             "SFTP": "SFTP file transfer",
             "tunnel": "SSH tunnel",

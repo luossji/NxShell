@@ -59,6 +59,21 @@
 								</el-form-item>
 							</el-col>
 						</el-row>
+						<el-row :gutter="10">
+							<el-col :span="12">
+								<!-- 连接方式 -->
+								<el-form-item :label="t('home.profile.base.vnc-client.title')" prop="client">
+									<el-select v-model="sessionForm.client" style="width: 100%">
+										<el-option :label="t('home.profile.base.vnc-client.embed')" value="embed" />
+										<el-option
+											v-if="isMac"
+											:label="t('home.profile.base.vnc-client.native')"
+											value="native"
+										/>
+									</el-select>
+								</el-form-item>
+							</el-col>
+						</el-row>
 						<session-credentials-fields
 							:form="sessionForm"
 							:username-label="t('home.profile.auth.username.title')"
@@ -91,6 +106,7 @@ import SessionCredentialsFields from '../components/SessionCredentialsFields.vue
 import { defaultForm } from './constants'
 
 const { t } = useI18n()
+const isMac = process.platform === 'darwin'
 const emits = defineEmits(['ok', 'cancel'])
 const visible = ref(false)
 const telnetFormRef = ref()

@@ -13,6 +13,7 @@
         "build_pack": "node devtools/buildpack.js",
         "rebuild": "npm rebuild serialport node-pty --runtime=electron --target=17.4.1 --disturl=https://electronjs.org/headers --build-from-source --foreground-scripts",
         "build-service": "webpack-cli --config webpack.conf.js",
+        "postinstall": "node scripts/patch-novnc-tla.js",
         "svgo": "svgo -f src/icons/svg --config=./svgo.config.js && svgo -f src/icons/svg-file --config=./svgo.config.js"
     },
     "dependencies": {
@@ -30,7 +31,7 @@
         "@codemirror/lang-xml": "^6.0.0",
         "@electron/remote": "2.0.8",
         "@fontsource/dejavu-mono": "^4.5.4",
-        "@novnc/novnc": "1.4.0",
+        "@novnc/novnc": "1.7.0",
         "@xterm/addon-fit": "^0.10.0",
         "@xterm/addon-search": "^0.15.0",
         "@xterm/addon-web-links": "^0.11.0",
@@ -55,11 +56,10 @@
         "mousetrap": "1.6.5",
         "node-pty": "^0.10.1",
         "nxshell-ftp": "^0.3.11",
-        "socksv5": "^0.0.6",
-        "zmodem.js": "^0.1.10",
         "pinia": "^2.0.33",
         "semver": "^7.3.8",
         "serialport": "^9.2.8",
+        "socksv5": "^0.0.6",
         "ssh2": "^1.17.0",
         "svg-sprite-loader": "^6.0.11",
         "svgo": "^3.0.2",
@@ -74,7 +74,8 @@
         "vuex": "^3.4.0",
         "webdav": "^4.2.0",
         "winston": "^3.3.3",
-        "xterm-theme": "^1.1.0"
+        "xterm-theme": "^1.1.0",
+        "zmodem.js": "^0.1.10"
     },
     "devDependencies": {
         "@babel/core": "^7.12.7",

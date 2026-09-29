@@ -151,6 +151,11 @@
             "default-session-name": "未命名主机",
             "base": {
                 "title": "基础配置",
+                "vnc-client": {
+                    "title": "连接方式",
+                    "embed": "内嵌窗口 (noVNC)",
+                    "native": "系统「屏幕共享」App（体验最佳）"
+                },
                 "host-name": {
                     "title": "主机名称",
                     "placeholder": "请输入主机名称",
@@ -452,6 +457,9 @@
         },
         "session-instance": {
             "duplicate-session": "复制会话",
+            "vnc-native-launched": "已调起系统「屏幕共享」：{target}，请在打开的窗口中操作",
+            "vnc-native-unsupported": "系统「屏幕共享」方式仅支持 macOS 平台",
+            "vnc-native-failed": "调起系统「屏幕共享」失败，请检查系统设置中是否已开启屏幕共享",
             "reconnect": "重新连接",
             "SFTP": "SFTP文件传输",
             "tunnel": "SSH通道",
