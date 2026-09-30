@@ -82,6 +82,8 @@
 
 <script setup>
 import { SESSION_CONFIG_TYPE } from "@/services/sessionMgr"
+import { isNativeScreenSharing, isNativeScreenSharingSupported, launchNativeScreenSharing } from "@/services/vncSession"
+import { Message } from "element-ui"
 import { subscript, unsubscript } from "@/services/eventbus"
 import NxFolderDialog from "./components/FolderDialog.vue"
 import NSpace from "@/components/space"
@@ -237,7 +239,30 @@ const handleHostOpen = async (sessionData) => {
 		return
 	}
 	// 用实时配置建连，避免用到过期的菜单树快照
-	await sessionManager.createSessionInstance(resolveLiveSessionConfig(sessionData) || sessionData)
+	const liveConfig = resolveLiveSessionConfig(sessionData) || sessionData
+	// 「系统屏幕共享」模式：直接调起 macOS 原生 App，不创建会话实例（因此不会打开 tab）
+	if (isNativeScreenSharing(liveConfig)) {
+		openNativeScreenSharing(liveConfig)
+		return
+	}
+	await sessionManager.createSessionInstance(liveConfig)
+}
+
+/**
+ * 调起 macOS 系统「屏幕共享」App（native 模式，无会话实例/无 tab）
+ */
+const openNativeScreenSharing = (sessionConfig) => {
+	if (!isNativeScreenSharingSupported()) {
+		Message.warning(t("home.session-instance.vnc-native-unsupported"))
+		return
+	}
+	try {
+		const target = launchNativeScreenSharing(sessionConfig)
+		Message.success(t("home.session-instance.vnc-native-launched", { target }))
+	} catch (error) {
+		console.log("vnc native launch error", error)
+		Message.error(t("home.session-instance.vnc-native-failed"))
+	}
 }
 
 /**

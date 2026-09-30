@@ -104,6 +104,8 @@ import { useI18n } from 'vue-i18n-bridge'
 import HostIconField from '../components/HostIconField.vue'
 import SessionCredentialsFields from '../components/SessionCredentialsFields.vue'
 import { defaultForm } from './constants'
+import { isNativeScreenSharingSupported, launchNativeScreenSharing } from '@/services/vncSession'
+import { Message } from 'element-ui'
 
 const { t } = useI18n()
 // 渲染层 webpack 把 process polyfill 成只有 env 的对象，platform 不可用；
@@ -196,7 +198,22 @@ const handleSaveAndConnect = () => {
 			return false
 		}
 		await saveOrUpdateSession()
-		await sessionManager.createSessionInstance(sessionConfig.value)
+		// 「系统屏幕共享」模式不创建会话实例（不开 tab），直接调起 macOS 原生 App
+		if (sessionForm.value.client === 'native') {
+			if (!isNativeScreenSharingSupported()) {
+				Message.warning(t('home.session-instance.vnc-native-unsupported'))
+			} else {
+				try {
+					const target = launchNativeScreenSharing(sessionForm.value)
+					Message.success(t('home.session-instance.vnc-native-launched', { target }))
+				} catch (error) {
+					console.log('vnc native launch error', error)
+					Message.error(t('home.session-instance.vnc-native-failed'))
+				}
+			}
+		} else {
+			await sessionManager.createSessionInstance(sessionConfig.value)
+		}
 		emits('ok', sessionForm.value)
 		visible.value = false
 	})

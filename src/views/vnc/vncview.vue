@@ -30,6 +30,7 @@
 import FileView from '../components/fileview/fileview'
 import PtAuthDialog from '../components/auth/auth'
 import RFB from '@novnc/novnc/core/rfb.js'
+import { isNativeScreenSharingSupported, launchNativeScreenSharing } from '@/services/vncSession'
 import * as EventBus from '../../services/eventbus'
 import { getProfile } from '@/services/globalSetting'
 
@@ -185,16 +186,14 @@ export default {
 			this.resizeObject.observe(this.$refs.screen)
 		},
 		launchNativeClient() {
-			// 渲染层 process.platform 不可用（webpack polyfill 只有 env），用 userAgent 判断
-			if (!/macintosh/i.test(navigator.userAgent)) {
+			// 兜底：native 模式正常路径（会话树双击/保存并连接）不会创建实例、不开 tab，
+			// 万一被其他入口建了实例，这里也保证能调起系统 App 而不是显示空白画面
+			if (!isNativeScreenSharingSupported()) {
 				this.warn(this.$t('home.session-instance.vnc-native-unsupported'))
 				return
 			}
-			const auth = this.username ? `${encodeURIComponent(this.username)}@` : ''
-			const target = `vnc://${auth}${this.host}:${this.port}`
 			try {
-				// open vnc://... 会让 macOS 自动打开系统自带「屏幕共享」App，密码由系统钥匙串/认证框处理
-				window.powertools.spawnDetachedProcess('open', [target])
+				const target = launchNativeScreenSharing(this.sessionInstance.cfg)
 				this.status(this.$t('home.session-instance.vnc-native-launched', {target}))
 			} catch (error) {
 				console.log('vnc native launch error', error)
