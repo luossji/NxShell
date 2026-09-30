@@ -463,7 +463,7 @@ class SSHNodes extends NxNodeServer {
                 password: hostInfo.password
             };
             try {
-                await this.__ssh_connect(authInfo, sshSession, null, pendingConnect);
+                await this._connectWithNetworkRetry(authInfo, sshSession, null, pendingConnect);
             } catch(e) {
                 if (e.level === 'client-cancelled') {
                     throw e;
@@ -482,7 +482,7 @@ class SSHNodes extends NxNodeServer {
                 passphrase: hostInfo.passphrase
             };
             try {
-                await this.__ssh_connect(authInfo, sshSession, null, pendingConnect);
+                await this._connectWithNetworkRetry(authInfo, sshSession, null, pendingConnect);
             } catch(e) {
                 if (e.level === 'client-cancelled') {
                     throw e;
@@ -503,7 +503,7 @@ class SSHNodes extends NxNodeServer {
                     this.sendWaitUserAuth(methodsLeft, cb, hostInfo.username);
                 }
             }
-            await this.__ssh_connect(authInfo, sshSession, control_channel, pendingConnect);
+            await this._connectWithNetworkRetry(authInfo, sshSession, control_channel, pendingConnect);
         }
 
         if (!connect_success) {
@@ -516,7 +516,7 @@ class SSHNodes extends NxNodeServer {
                     this.sendWaitUserAuth(methodsLeft, cb, hostInfo.username);
                 }
             }
-            await this.__ssh_connect(authInfo, sshSession, control_channel, pendingConnect);
+            await this._connectWithNetworkRetry(authInfo, sshSession, control_channel, pendingConnect);
         }
 
         if(hostInfo.forwardin === 'forwardin') {
@@ -586,6 +586,56 @@ class SSHNodes extends NxNodeServer {
             sshSession.on('close', handleClose);
             sshSession.on("ready", handleReady).on("error", handleError).connect(authInfo);
         });
+    }
+
+    /**
+     * ARP 预热：向目标 host:port 发一个 UDP 包，触发内核对该 IP 的 ARP 解析。
+     * macOS 有线网卡在刚联网/切换网络后 ARP 表是冷的，首次 TCP 连接会因
+     * ARP 未缓存而报 ENETUNREACH / "No route to host"，预热后可正常连接。
+     * @param {string} host 目标 IP
+     */
+    _warmupARP(host) {
+        return new Promise((resolve) => {
+            try {
+                const dgram = require('dgram');
+                const sock = dgram.createSocket('udp4');
+                const done = () => { try { sock.close(); } catch (e) {} resolve(); };
+                sock.on('error', done);
+                sock.send(Buffer.from([0]), 0, 1, 22, host, () => {
+                    // 即使对端 22 端口无响应，内核也会先发出 ARP 请求；稍等让其完成解析
+                    setTimeout(done, 300);
+                });
+            } catch (e) {
+                resolve();
+            }
+        });
+    }
+
+    /**
+     * 带网络错误重试的连接封装。
+     * - 网络层错误（client-socket / ETIMEDOUT / ENETUNREACH 等）重试 maxRetry 次，
+     *   每次重试前先预热 ARP，解决局域网首连瞬态失败。
+     * - 认证失败 (client-authentication) 与用户取消 (client-cancelled) 不重试，
+     *   直接上抛由外层按原逻辑处理（避免密码爆破 / 误重试）。
+     */
+    async _connectWithNetworkRetry(authInfo, sshSession, control_channel, pendingConnect = null, maxRetry = 2) {
+        let lastErr = null;
+        for (let attempt = 0; attempt <= maxRetry; attempt++) {
+            try {
+                return await this.__ssh_connect(authInfo, sshSession, control_channel, pendingConnect);
+            } catch (e) {
+                if (e.level === 'client-cancelled' || e.level === 'client-authentication') {
+                    throw e;
+                }
+                lastErr = e;
+                if (attempt < maxRetry) {
+                    await this._warmupARP(authInfo.host);
+                    continue;
+                }
+                throw e;
+            }
+        }
+        throw lastErr;
     }
 
     async _forward_in(sshConn, remote_ip, remote_port, local_ip, local_port) {
