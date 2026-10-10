@@ -623,7 +623,10 @@ export default {
 
 			const write = async (data) => {
 				if (this.trzsz) {
-					this.trzsz.processServerOutput(data)
+					// zmodem.js sentry 的 to_terminal 给的是 number[]，而 trzsz 的
+					// detectAndHandleTrzsz 只认 string/ArrayBuffer/Uint8Array/Blob，
+					// 收到 Array 会静默丢 banner → 永远识别不到 trz 握手。必须转成 Uint8Array。
+					this.trzsz.processServerOutput(data instanceof Uint8Array ? data : Uint8Array.from(data))
 				} else {
 					this.iconv_to_uft8.write(data)
 				}
