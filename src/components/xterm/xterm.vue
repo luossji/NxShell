@@ -453,7 +453,8 @@ export default {
 				}
 			}
 
-			this.$emit("file-drop", files)
+			// 第二个参数是原始 DataTransferItemList，供 trzsz（浏览器模式）读取 FileSystemEntry 上传
+			this.$emit("file-drop", files, evt.dataTransfer.items)
 		},
 
 		searchUp() {

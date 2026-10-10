@@ -54,6 +54,7 @@ import { getProfile } from "@/services/globalSetting"
 import * as EventBus from "../../services/eventbus"
 import { PtXterm } from "@/components"
 import { xzmodem } from "./xzmodem.js"
+import { TrzszFilter } from "trzsz"
 import { create_iconv } from "./iconv.js"
 import { createLogger } from "@/services/nxsys/logger"
 import mousetrap from "mousetrap"
@@ -76,6 +77,7 @@ export default {
 	data() {
 		return {
 			mousetrap: null,
+			trzsz: null,
 			tunnelMapTitle: {},
 			tunnelMapPort: {},
 			showSessionToolbar: !getProfile("xterm")?.hideSessionShortcutBar,
@@ -469,7 +471,13 @@ export default {
 			this.xzm = xzm
 			this.sessionInstance.on("data", (data) => {
 				//this.$refs.xterm.$emit("data", data);
-				xzm.consume(data)
+				// trzsz 传输中直接喂 filter（zmodem sentry 会缓冲扫描，绕过它避免卡顿/丢帧）；
+				// 横幅 ::TRZSZ:TRANSFER:... 到达前 filter 尚未接管，仍走 sentry 直通路径进入 filter。
+				if (this.trzsz && this.trzsz.isTransferringFiles()) {
+					this.trzsz.processServerOutput(data)
+				} else {
+					xzm.consume(data)
+				}
 				this.sessionConnect = true
 			})
 
@@ -589,20 +597,45 @@ export default {
 			}
 
 			this.iconv_to_uft8.on("data", (d) => {
-				that.$nextTick(() => 
+				that.$nextTick(() =>
                 {
 					that.emitXterm("data", d)
                 })
 			})
 
+			// trzsz 协议过滤器（trz/tsz，zmodem 的现代替代，见 https://trzsz.github.io）：
+			// - 输出：zmodem sentry 放行的数据先进 filter，空闲时直通 iconv_to_uft8（与原行为一致），
+			//   检测到 ::TRZSZ:TRANSFER:... 横幅时接管传输（上传/下载 + 进度条）。
+			// - 输入：onXtermData 里进 filter，空闲时直通 iconv_to_charset（与原行为一致）。
+			// 渲染层无 node（nodeIntegration=false），库跑浏览器模式：
+			// 上传用 DataTransferItemList（xterm.vue 的 file-drop 第二个参数），下载走 showSaveFilePicker。
+			const termRef = this.$refs.xterm
+			this.trzsz = new TrzszFilter({
+				writeToTerminal: (data) => {
+					this.iconv_to_uft8.write(data)
+				},
+				sendToServer: (input) => {
+					this.iconv_to_charset.write(input)
+				},
+				terminalColumns: (termRef && termRef.terminal && termRef.terminal.cols) || 80,
+				dragInitTimeout: 3000
+			})
+
 			const write = async (data) => {
-				this.iconv_to_uft8.write(data)
+				if (this.trzsz) {
+					this.trzsz.processServerOutput(data)
+				} else {
+					this.iconv_to_uft8.write(data)
+				}
 			}
 			return new xzmodem({ sendTo, write })
 		},
 		onXtermKey(e) {
 			const event = e.domEvent
 			if (event.ctrlKey && event.key === "c") {
+				if (this.trzsz && this.trzsz.isTransferringFiles()) {
+					this.trzsz.stopTransferringFiles()
+				}
 				this.xzm.handleInterrupt()
 			} else if (!this.sessionConnect) {
 				if (event.key === "Enter") {
@@ -610,7 +643,27 @@ export default {
 				}
 			}
 		},
-		async handleFileDrop(files) {
+		async handleFileDrop(files, dropItems) {
+			if (!files || !files.length) {
+				return
+			}
+			// 优先 trzsz：远端装了 trz/tsz 时走 trz（实时进度条/断点续传/目录/无 4GB 限制）。
+			// 渲染层是浏览器模式，必须传原始 DataTransferItemList（库从中取 FileSystemEntry）。
+			if (this.trzsz && typeof DataTransferItemList !== "undefined" && dropItems instanceof DataTransferItemList) {
+				try {
+					await this.trzsz.uploadFiles(dropItems)
+					return
+				} catch (err) {
+					// 库在 dragInitTimeout 内没等到握手横幅时以字符串 "Upload does not start" reject
+					// ——即远端没有 trz 命令，此时回退 rz；其他错误（如用户取消）不回退
+					const msg = err && err.message ? err.message : err
+					if (msg !== "Upload does not start") {
+						console.log("trz upload error:", err)
+						return
+					}
+					console.log("trz not available on remote, fallback to rz")
+				}
+			}
 			for (let i = 0; i < files.length; i++) {
 				let file = files[i]
 				try {
@@ -623,7 +676,12 @@ export default {
 		},
 		onXtermData(data) {
 			if (this.sessionConnect) {
-				this.iconv_to_charset.write(data)
+				// 空闲时 filter 直通到 iconv_to_charset，行为与原来完全一致；trzsz 传输中接管
+				if (this.trzsz) {
+					this.trzsz.processTerminalInput(data)
+				} else {
+					this.iconv_to_charset.write(data)
+				}
 				if (this.enableSendToAllTerm) {
 					this.sendToAllTerm(data)
 				}
@@ -632,6 +690,9 @@ export default {
 			}
 		},
 		onXtermResize(cols, rows) {
+			if (this.trzsz) {
+				this.trzsz.setTerminalColumns(cols)
+			}
 			this.sessionInstance && this.sessionInstance.emit("resize", cols, rows)
 		},
 		onTitleChange(title) {
