@@ -445,6 +445,11 @@
                 "sftp-dirt": {
                     "title": "Sftp open directory of connection",
                     "description": "Sftp will open the directory when create connection by left side"
+                },
+                "upload-protocol": {
+                    "title": "Drag-drop upload protocol",
+                    "description": "Protocol used when dropping files onto the terminal. Auto: try trz first (requires trzsz on remote), fallback to rz (lrzsz) after 3s; trz/rz: use the specified protocol only.",
+                    "auto": "Auto"
                 }
             },
             "operator": {

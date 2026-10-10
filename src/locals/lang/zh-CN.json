@@ -445,6 +445,11 @@
                 "sftp-dirt": {
                     "title": "配置sftp默认打开目录",
                     "description": "在左侧菜单栏打开sftp的时候默认打开该目录。"
+                },
+                "upload-protocol": {
+                    "title": "拖拽上传协议",
+                    "description": "向终端拖文件上传时使用的协议。自动：优先 trz（需远端装 trzsz），3 秒无响应回退 rz（需 lrzsz）；trz/rz：只用指定协议。",
+                    "auto": "自动尝试"
                 }
             },
             "operator": {

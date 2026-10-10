@@ -227,6 +227,15 @@
 								<span>{{ t("home.profile.connect.sftp-dirt.title") }}</span>
 								<el-input v-model="sshSubForm.sftpDirt" style="width: 200px" />
 							</n-space>
+							<n-space fill align="space-between">
+								<!--拖拽上传协议-->
+								<span>{{ t("home.profile.connect.upload-protocol.title") }}</span>
+								<el-select v-model="sshSubForm.uploadProtocol" style="width: 200px">
+									<el-option :label="t('home.profile.connect.upload-protocol.auto')" value="auto" />
+									<el-option label="trz (trzsz)" value="trz" />
+									<el-option label="rz (lrzsz)" value="rz" />
+								</el-select>
+							</n-space>
 						</n-space>
 					</el-tab-pane>
 				</el-tabs>
@@ -288,6 +297,7 @@ const defaultForm = {
 	proxyPort: 1080,
 	forward: "none",
 	sftpDirt: "~",
+	uploadProtocol: "auto",
 	keepAliveInterval: 60,
 	keepAliveCountMax: 3,
 	readyTimeout: 20000,

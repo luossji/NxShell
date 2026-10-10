@@ -650,9 +650,11 @@ export default {
 			if (!files || !files.length) {
 				return
 			}
+			// 上传协议：auto=优先 trz、超时回退 rz（默认）；trz=只用 trz；rz=只用 rz（会话高级配置 uploadProtocol）
+			const proto = (this.options && this.options.uploadProtocol) || "auto"
 			// 优先 trzsz：远端装了 trz/tsz 时走 trz（实时进度条/断点续传/目录/无 4GB 限制）。
 			// 渲染层是浏览器模式，必须传原始 DataTransferItemList（库从中取 FileSystemEntry）。
-			if (this.trzsz && typeof DataTransferItemList !== "undefined" && dropItems instanceof DataTransferItemList) {
+			if (this.trzsz && proto !== "rz" && typeof DataTransferItemList !== "undefined" && dropItems instanceof DataTransferItemList) {
 				try {
 					await this.trzsz.uploadFiles(dropItems)
 					return
@@ -662,6 +664,10 @@ export default {
 					const msg = err && err.message ? err.message : err
 					if (msg !== "Upload does not start") {
 						console.log("trz upload error:", err)
+						return
+					}
+					if (proto === "trz") {
+						console.log("trz not available on remote (protocol locked to trz, no rz fallback)")
 						return
 					}
 					console.log("trz not available on remote, fallback to rz")
