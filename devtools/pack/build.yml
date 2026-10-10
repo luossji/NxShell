@@ -48,5 +48,7 @@ mac:
   target: dmg
   icon: ./devtools/pack/resources/mac/icon-128.icns
   category: public.app-category.developer-tools
+  extendInfo:
+    NSLocalNetworkUsageDescription: NxShell 需要访问本地网络，以连接你配置的 SSH / SFTP / VNC 服务器。
 afterPack: ./devtools/pack/afterPackHook.js
 beforeBuild: ./devtools/pack/beforeBuildHook.js
