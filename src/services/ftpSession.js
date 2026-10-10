@@ -11,22 +11,14 @@ class FTPSession extends SessionInterface {
 
     async init() {
         const cfg = this.cfg;
-        let secure = cfg.secure;
-        try{
-            secure = JSON.parse(cfg.secure);
-        }catch(e){
-        }
-
         let nodeInstance;
         try {
-            nodeInstance = await createNodeSessionInstance(this.cfg.uuid, {
-                host: cfg.hostAddress,
-                port: cfg.hostFtpPort,
-                protocal: 'ftp',
-                username: cfg.username,
-                password: cfg.password,
-                secure: secure
-            });
+            // 必须传原始会话配置（hostAddress/hostFtpPort 形态），与其他会话类型一致：
+            // createNodeSessionInstance 统一把它推给节点 updateConfig()，
+            // 而 ftpnode.updateConfig 期望的是会话格式。之前这里拼的是 ftp 客户端格式
+            // （host/port），updateConfig 映射出 host=undefined，连接时报
+            // "Cannot read properties of undefined (reading 'trim')"。
+            nodeInstance = await createNodeSessionInstance(cfg.uuid, cfg);
             await nodeInstance.init();
         } catch (err) {
             console.error(err);
