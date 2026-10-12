@@ -98,7 +98,8 @@ const sessionManager = proxy.$sessionManager
 const sessionConfig = ref()
 
 const showModal = (sessionId) => {
-	sessionStore.updateProcess()
+	// 仅刷新分组下拉选项；不要重建左侧菜单树，否则会清空搜索过滤结果
+	sessionStore.refreshGroups()
 	const currentGroupId = sessionStore.currentNode.isFolder ? sessionStore.currentNode.sessionId : sessionStore.currentNode.node?.parent?.data?.id
 	if (sessionId) {
 		isEdit.value = true

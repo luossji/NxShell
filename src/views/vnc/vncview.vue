@@ -29,7 +29,8 @@
 <script>
 import FileView from '../components/fileview/fileview'
 import PtAuthDialog from '../components/auth/auth'
-import RFB from '@novnc/novnc/lib/rfb'
+import RFB from '@novnc/novnc/core/rfb.js'
+import { isNativeScreenSharingSupported, launchNativeScreenSharing } from '@/services/vncSession'
 import * as EventBus from '../../services/eventbus'
 import { getProfile } from '@/services/globalSetting'
 
@@ -138,6 +139,12 @@ export default {
 			this.url = `vnc://${this.host}:${this.port}`
 
 			this.status('Connecting')
+			// 连接方式：native = 调起 macOS 系统自带「屏幕共享」App（支持 Apple 私有协议/RA2 认证/高性能通道）；
+			// embed（默认）= 内嵌 noVNC。noVNC 的 ws:// 连接由 core 的 vnctcpproxy（window.WebSocket 替换）转成裸 TCP。
+			if (config.client === 'native') {
+				this.launchNativeClient()
+				return
+			}
 			let url = `ws://${this.host}:${this.port}`
 			// Creating a new RFB object will start a new connection
 			rfb = new RFB(this.$refs.screen, url)
@@ -177,6 +184,21 @@ export default {
 				rfb.scaleViewport = true
 			})
 			this.resizeObject.observe(this.$refs.screen)
+		},
+		launchNativeClient() {
+			// 兜底：native 模式正常路径（会话树双击/保存并连接）不会创建实例、不开 tab，
+			// 万一被其他入口建了实例，这里也保证能调起系统 App 而不是显示空白画面
+			if (!isNativeScreenSharingSupported()) {
+				this.warn(this.$t('home.session-instance.vnc-native-unsupported'))
+				return
+			}
+			try {
+				const target = launchNativeScreenSharing(this.sessionInstance.cfg)
+				this.status(this.$t('home.session-instance.vnc-native-launched', {target}))
+			} catch (error) {
+				console.log('vnc native launch error', error)
+				this.warn(this.$t('home.session-instance.vnc-native-failed'))
+			}
 		},
 		credentialsAreRequired(e) {
 			if (this.username && this.password) {

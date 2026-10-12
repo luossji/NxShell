@@ -28,8 +28,9 @@ class FTPNodes extends NxNodeServer {
         }catch(e){
         }
         this.config = {
-            host: cfg.hostAddress,
-            port: cfg.hostFtpPort,
+            // 兼容两种形态：会话配置（hostAddress/hostFtpPort）与 ftp 客户端配置（host/port）
+            host: cfg.hostAddress || cfg.host,
+            port: cfg.hostFtpPort || cfg.port,
             protocal: 'ftp',
             username: cfg.username,
             password: cfg.password,

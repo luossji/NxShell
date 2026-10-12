@@ -10,7 +10,8 @@
         aria-hidden="true"
         v-on="$listeners"
     >
-        <use :xlink:href="iconName" />
+        <!-- key 跟随图标 sprite 版本，异步图标 chunk 到位后强制重新解析引用 -->
+        <use :xlink:href="iconName" :key="spriteVersion" />
     </svg>
     <img
         v-else
@@ -27,6 +28,8 @@
 </template>
 
 <script>
+import { iconState } from '@/icons/state'
+
 export default {
     name: 'NIcon',
     props: {
@@ -48,6 +51,10 @@ export default {
         }
     },
     computed: {
+        spriteVersion() {
+            // 依赖异步图标加载状态：加载完成后重新解析 <use>，图标即时补齐
+            return iconState.fileIconsLoaded ? 1 : 0
+        },
         isExternal() {
             // return isExternal(this.name)
             return false

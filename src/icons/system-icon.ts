@@ -1,4 +1,5 @@
 import { getIconForFolder, getIconForFile } from "vscode-material-icon-theme-js";
+import { ensureFileIcons } from "./index";
 
 interface ISystemProps {
     label: string,
@@ -62,9 +63,12 @@ export function getIcon(name: string, type: 'file' | 'folder' | 'link' | undefin
 }
 
 export function getFileIcon(name: string) {
+    // 文件类型图标是异步 chunk，这里顺手触发加载；NIcon 会在图标到位后自动补齐
+    ensureFileIcons()
     return (getIconForFile(name) || 'file').replace?.('.svg', '')
 }
 
 export function getFolderIcon(name: string) {
+    ensureFileIcons()
     return getIconForFolder(name).replace('.svg', '')
 }

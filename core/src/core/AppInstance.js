@@ -8,6 +8,7 @@ const {PROTOCOL_APP} = require("./Protocol");
 const {AppServiceManager, AppService} = require("./AppService");
 const {getGlobalExchange} = require("./AppIPC");
 const {createWindow, WINDOW_TYPE} = require("./AppViewProvider");
+const timeline = require("../utils/startupTimeline");
 
 /**
  * @class AppInstance
@@ -136,13 +137,17 @@ class AppInstance extends EventEmitter{
 
     async _createView() {
         let startInfo = this.appPackageInfo.package.start || {};
+        timeline.mark("before BrowserWindow ctor", startInfo.view || WINDOW_TYPE.MAIN_WINDOW);
         this.view = await createWindow(startInfo.view || WINDOW_TYPE.MAIN_WINDOW, startInfo.viewFlags || []);
+        timeline.mark("BrowserWindow created");
         if (process.env.NODE_ENV === "development") {
             this.view.webContents.openDevTools();
+            timeline.mark("openDevTools() returned");
         }
 
         this._setIconOnLinux();
         enable_remote(this.view.webContents);
+        timeline.mark("loadURL() called", this._getViewURL());
         this.view.loadURL(this._getViewURL());
     }
 
@@ -175,6 +180,7 @@ class AppInstance extends EventEmitter{
             this._getServiceModulePath(),
             ...args
         );
+        timeline.mark("shell service forked (ptservices)", packageInfo.package.name);
     }
 
     /**

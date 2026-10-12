@@ -82,6 +82,8 @@
 
 <script setup>
 import { SESSION_CONFIG_TYPE } from "@/services/sessionMgr"
+import { isNativeScreenSharing, isNativeScreenSharingSupported, launchNativeScreenSharing } from "@/services/vncSession"
+import { Message } from "element-ui"
 import { subscript, unsubscript } from "@/services/eventbus"
 import NxFolderDialog from "./components/FolderDialog.vue"
 import NSpace from "@/components/space"
@@ -104,7 +106,7 @@ const menuProps = reactive({
 const nxTabStore = useNxTabsStore()
 const sessionStore = useSessionStore()
 const {} = storeToRefs(nxTabStore)
-const { menuTree, currentNode } = storeToRefs(sessionStore)
+const { menuTree, currentNode, treeVersion } = storeToRefs(sessionStore)
 const proxy = getCurrentInstance().proxy
 const sessionManager = proxy.$sessionManager
 const sessionModal = shallowRef()
@@ -131,8 +133,35 @@ const clipboard = reactive({
 	operate: ""
 })
 
+/**
+ * 取会话的实时配置
+ *
+ * 菜单树节点里存的是「构建菜单树那一刻抓的配置快照」，而属性弹窗保存时会替换
+ * SessionConfig.config 对象（旧快照仍指向旧对象）。一旦菜单树没及时重建，
+ * 双击连接/打开 SFTP 就会用过期配置（典型表现：改了主机 IP 仍连旧 IP）。
+ * 所以这里统一按 id / uuid 回查实时配置，拿不到才退回传入的快照。
+ *
+ * @param {Object} sessionData 菜单树节点数据或会话配置
+ * @returns {Object|null} 实时会话配置
+ */
+const resolveLiveSessionConfig = (sessionData) => {
+	if (!sessionData) {
+		return null
+	}
+	// 已经是 SessionConfig
+	if (typeof sessionData.update === "function" && sessionData.config) {
+		return sessionData
+	}
+	const sessionId = sessionData._id ?? sessionData.id
+	return (
+		(sessionId !== undefined && sessionId !== null ? sessionManager.getSessionConfigById(sessionId) : null) ||
+		(sessionData.uuid ? sessionManager.getSessionConfigByUUID(sessionData.uuid) : null) ||
+		null
+	)
+}
+
 const handleOpenSFTP = (data) => {
-	sessionManager.createSFTPSessionInstance(data)
+	sessionManager.createSFTPSessionInstance(resolveLiveSessionConfig(data) || data)
 }
 
 // 复制/剪切会话
@@ -158,6 +187,11 @@ const handleSessionTreeContextMenu_Paste = () => {
 		} else {
             sessionConfig = sessionConfig.duplicate()
             sessionConfig.name = `${sessionConfig.name} (Copy)`
+            // 会话显示名（SessionConfig.name）与属性弹窗的「主机名称」（config.hostName）是两份数据，
+            // 不同步的话属性弹窗里看到的还是原名，而且保存时会用 hostName 覆盖 name，把 (Copy) 冲掉
+            if (sessionConfig.config && "hostName" in sessionConfig.config) {
+                sessionConfig.config.hostName = sessionConfig.name
+            }
         }
 		sessionStore.appendSessionConfig(sessionConfig)
 	} catch (error) {
@@ -204,7 +238,31 @@ const handleHostOpen = async (sessionData) => {
 		// 目录节点不启动会话实例
 		return
 	}
-	await sessionManager.createSessionInstance(sessionData)
+	// 用实时配置建连，避免用到过期的菜单树快照
+	const liveConfig = resolveLiveSessionConfig(sessionData) || sessionData
+	// 「系统屏幕共享」模式：直接调起 macOS 原生 App，不创建会话实例（因此不会打开 tab）
+	if (isNativeScreenSharing(liveConfig)) {
+		openNativeScreenSharing(liveConfig)
+		return
+	}
+	await sessionManager.createSessionInstance(liveConfig)
+}
+
+/**
+ * 调起 macOS 系统「屏幕共享」App（native 模式，无会话实例/无 tab）
+ */
+const openNativeScreenSharing = (sessionConfig) => {
+	if (!isNativeScreenSharingSupported()) {
+		Message.warning(t("home.session-instance.vnc-native-unsupported"))
+		return
+	}
+	try {
+		const target = launchNativeScreenSharing(sessionConfig)
+		Message.success(t("home.session-instance.vnc-native-launched", { target }))
+	} catch (error) {
+		console.log("vnc native launch error", error)
+		Message.error(t("home.session-instance.vnc-native-failed"))
+	}
 }
 
 /**
@@ -479,6 +537,17 @@ const menuSearch = (value, data) => {
 
 watch(searchKeywords, (keywords) => {
 	sessionTreeRef.value?.filter(keywords)
+})
+
+/**
+ * 菜单树重建后（新增/删除/重命名/拖拽会话、导入配置等）el-tree 会重新创建节点，
+ * 节点的过滤状态会被重置为可见，这里重新应用当前搜索词，避免过滤结果被清空。
+ */
+watch(treeVersion, () => {
+	if (!searchKeywords.value) {
+		return
+	}
+	nextTick(() => sessionTreeRef.value?.filter(searchKeywords.value))
 })
 
 onMounted(() => {

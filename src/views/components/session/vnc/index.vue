@@ -59,6 +59,21 @@
 								</el-form-item>
 							</el-col>
 						</el-row>
+						<el-row :gutter="10">
+							<el-col :span="12">
+								<!-- 连接方式 -->
+								<el-form-item :label="t('home.profile.base.vnc-client.title')" prop="client">
+									<el-select v-model="sessionForm.client" style="width: 100%">
+										<el-option :label="t('home.profile.base.vnc-client.embed')" value="embed" />
+										<el-option
+											v-if="isMac"
+											:label="t('home.profile.base.vnc-client.native')"
+											value="native"
+										/>
+									</el-select>
+								</el-form-item>
+							</el-col>
+						</el-row>
 						<session-credentials-fields
 							:form="sessionForm"
 							:username-label="t('home.profile.auth.username.title')"
@@ -89,8 +104,13 @@ import { useI18n } from 'vue-i18n-bridge'
 import HostIconField from '../components/HostIconField.vue'
 import SessionCredentialsFields from '../components/SessionCredentialsFields.vue'
 import { defaultForm } from './constants'
+import { isNativeScreenSharingSupported, launchNativeScreenSharing } from '@/services/vncSession'
+import { Message } from 'element-ui'
 
 const { t } = useI18n()
+// 渲染层 webpack 把 process polyfill 成只有 env 的对象，platform 不可用；
+// 与 NxLayout.vue 一致用 userAgent 判断（参考 src/layout/NxLayout.vue:34）
+const isMac = /macintosh/i.test(navigator.userAgent)
 const emits = defineEmits(['ok', 'cancel'])
 const visible = ref(false)
 const telnetFormRef = ref()
@@ -109,7 +129,8 @@ const sessionManager = proxy.$sessionManager
 const sessionConfig = ref()
 
 const showModal = (sessionId) => {
-	sessionStore.updateProcess()
+	// 仅刷新分组下拉选项；不要重建左侧菜单树，否则会清空搜索过滤结果
+	sessionStore.refreshGroups()
 	const currentGroupId = sessionStore.currentNode.isFolder ? sessionStore.currentNode.sessionId : sessionStore.currentNode.node?.parent?.data?.id
 	if (sessionId) {
 		isEdit.value = true
@@ -177,7 +198,22 @@ const handleSaveAndConnect = () => {
 			return false
 		}
 		await saveOrUpdateSession()
-		await sessionManager.createSessionInstance(sessionConfig.value)
+		// 「系统屏幕共享」模式不创建会话实例（不开 tab），直接调起 macOS 原生 App
+		if (sessionForm.value.client === 'native') {
+			if (!isNativeScreenSharingSupported()) {
+				Message.warning(t('home.session-instance.vnc-native-unsupported'))
+			} else {
+				try {
+					const target = launchNativeScreenSharing(sessionForm.value)
+					Message.success(t('home.session-instance.vnc-native-launched', { target }))
+				} catch (error) {
+					console.log('vnc native launch error', error)
+					Message.error(t('home.session-instance.vnc-native-failed'))
+				}
+			}
+		} else {
+			await sessionManager.createSessionInstance(sessionConfig.value)
+		}
 		emits('ok', sessionForm.value)
 		visible.value = false
 	})

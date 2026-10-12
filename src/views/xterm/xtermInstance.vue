@@ -37,6 +37,7 @@
 			@termdata="onXtermData"
 			@resize="onXtermResize"
 			@titleChange="onTitleChange"
+			@cwdChange="onCwdChange"
 			@shortcut="handleShortCutEvent"
 			v-context-menu="xtermMenu"
 			:options="options"
@@ -53,6 +54,7 @@ import { getProfile } from "@/services/globalSetting"
 import * as EventBus from "../../services/eventbus"
 import { PtXterm } from "@/components"
 import { xzmodem } from "./xzmodem.js"
+import { TrzszFilter } from "trzsz"
 import { create_iconv } from "./iconv.js"
 import { createLogger } from "@/services/nxsys/logger"
 import mousetrap from "mousetrap"
@@ -75,14 +77,20 @@ export default {
 	data() {
 		return {
 			mousetrap: null,
+			trzsz: null,
 			tunnelMapTitle: {},
 			tunnelMapPort: {},
 			showSessionToolbar: !getProfile("xterm")?.hideSessionShortcutBar,
 			backgroundColor: "#000",
 			isComponentAlive: true,
 			sessionInstance: null,
-			currentDirectory: "",
-			pendingCwdRequest: null,
+			// 当前目录来源（优先级从高到低）：
+			//   1) cwd  —— OSC 7 上报的交互 shell 真实工作目录（最准，需远端装 shell 集成）
+			//   2) title —— 终端标题里解析出的路径（onTitleChange -> extractPathFromTerminalTitle）
+			// 打开 SFTP 时优先用 cwd，拿不到再回落 title，最后回落 sftpDirt。
+			// 已不再向 shell 注入 printf 探测（会回显到终端里）。
+			cwd: "",
+			title: "",
 			enableSendToAllTerm: false,
 			xtermMenu: [
 				{
@@ -399,96 +407,18 @@ export default {
 
 			const sessionConfig = this.$sessionManager.getSessionConfigByInstanceId(this.sessionInstanceId)
 			let sftCfg = { ...sessionConfig }
-			if (sessionConfig?.config?.protocal === "ssh" && this.isMacOSSession(sessionConfig)) {
-				await this.requestCurrentDirectoryFromShell(sessionInstance)
+			// 优先级：OSC 7 真实 cwd > 终端标题路径 > 用户显式配置的初始目录 > 家目录(~)
+			const resolved = this.cwd || this.extractPathFromTerminalTitle(this.title)
+			let fallback = sftCfg.config.sftpDirt
+			// 历史上 sftpDirt 默认是 "/"（root），但「不知道当前目录时」正确语义是家目录，
+			// 所以把 "/" 和空值都归一为 "~"（SFTP 层会 realpath('.') 展开成 home）。
+			// 用户显式设的非 "/" 目录（如 /data）仍被尊重。
+			if (!fallback || fallback === "/") {
+				fallback = "~"
 			}
-			const sftpDirt = this.getSftpOpenDirectory(this.currentDirectory || this.title, sftCfg.config.sftpDirt)
+			const sftpDirt = resolved || fallback
 			sftCfg.config = { ...sftCfg.config, sftpDirt: sftpDirt, connId: connId }
 			await this.$sessionManager.createSFTPSessionInstance(sftCfg)
-		},
-		isMacOSSession(sessionConfig) {
-			const system = sessionConfig?.config?.system?.toLowerCase?.() || ""
-			return ["mac", "macos", "darwin", "osx", "apple"].some((keyword) => system.includes(keyword))
-		},
-		async requestCurrentDirectoryFromShell(sessionInstance) {
-			if (!sessionInstance || !this.iconv_to_charset) {
-				return ""
-			}
-
-			if (this.pendingCwdRequest) {
-				return await this.pendingCwdRequest.promise
-			}
-
-			let resolveRequest = null
-			const promise = new Promise((resolve) => {
-				resolveRequest = resolve
-			})
-
-			const timeout = setTimeout(() => {
-				if (this.pendingCwdRequest) {
-					this.pendingCwdRequest = null
-				}
-				resolveRequest(this.currentDirectory || "")
-			}, 1200)
-
-			this.pendingCwdRequest = {
-				buffer: "",
-				resolve: (cwd) => {
-					clearTimeout(timeout)
-					this.pendingCwdRequest = null
-					resolveRequest(cwd)
-				},
-				promise
-			}
-
-			// Ask the active interactive shell to print a unique marker-wrapped pwd result.
-			this.iconv_to_charset.write("printf '__NXSHELL_CWD_BEGIN__%s__NXSHELL_CWD_END__\\n' \"$PWD\"\r")
-
-			return await promise
-		},
-		captureCurrentDirectoryFromShellOutput(data) {
-			if (!this.pendingCwdRequest) {
-				return
-			}
-
-			const chunk = typeof data === "string" ? data : data?.toString?.("utf8") || ""
-			if (!chunk) {
-				return
-			}
-
-			this.pendingCwdRequest.buffer += chunk
-			if (this.pendingCwdRequest.buffer.length > 4096) {
-				this.pendingCwdRequest.buffer = this.pendingCwdRequest.buffer.slice(-4096)
-			}
-
-			const beginMarker = "__NXSHELL_CWD_BEGIN__"
-			const endMarker = "__NXSHELL_CWD_END__"
-			const endIndex = this.pendingCwdRequest.buffer.lastIndexOf(endMarker)
-			if (endIndex === -1) {
-				return
-			}
-
-			const beginIndex = this.pendingCwdRequest.buffer.lastIndexOf(beginMarker, endIndex)
-			if (beginIndex === -1) {
-				return
-			}
-
-			const cwd = this.pendingCwdRequest.buffer.slice(beginIndex + beginMarker.length, endIndex).trim()
-			if (cwd) {
-				this.currentDirectory = cwd
-				this.title = cwd
-				this.$emit("titleChange", { sessionId: this.sessionInstanceId, title: cwd })
-			}
-
-			this.pendingCwdRequest.resolve(cwd)
-		},
-		getSftpOpenDirectory(title, fallback) {
-			const currentPath = this.extractPathFromTerminalTitle(title)
-			if (currentPath) {
-				return currentPath
-			}
-
-			return fallback || "/"
 		},
 		extractPathFromTerminalTitle(title) {
 			if (!title || typeof title !== "string") {
@@ -540,9 +470,14 @@ export default {
 			const xzm = this.loadXzmode()
 			this.xzm = xzm
 			this.sessionInstance.on("data", (data) => {
-				this.captureCurrentDirectoryFromShellOutput(data)
 				//this.$refs.xterm.$emit("data", data);
-				xzm.consume(data)
+				// trzsz 传输中直接喂 filter（zmodem sentry 会缓冲扫描，绕过它避免卡顿/丢帧）；
+				// 横幅 ::TRZSZ:TRANSFER:... 到达前 filter 尚未接管，仍走 sentry 直通路径进入 filter。
+				if (this.trzsz && this.trzsz.isTransferringFiles()) {
+					this.trzsz.processServerOutput(data)
+				} else {
+					xzm.consume(data)
+				}
 				this.sessionConnect = true
 			})
 
@@ -662,20 +597,48 @@ export default {
 			}
 
 			this.iconv_to_uft8.on("data", (d) => {
-				that.$nextTick(() => 
+				that.$nextTick(() =>
                 {
 					that.emitXterm("data", d)
                 })
 			})
 
+			// trzsz 协议过滤器（trz/tsz，zmodem 的现代替代，见 https://trzsz.github.io）：
+			// - 输出：zmodem sentry 放行的数据先进 filter，空闲时直通 iconv_to_uft8（与原行为一致），
+			//   检测到 ::TRZSZ:TRANSFER:... 横幅时接管传输（上传/下载 + 进度条）。
+			// - 输入：onXtermData 里进 filter，空闲时直通 iconv_to_charset（与原行为一致）。
+			// 渲染层无 node（nodeIntegration=false），库跑浏览器模式：
+			// 上传用 DataTransferItemList（xterm.vue 的 file-drop 第二个参数），下载走 showSaveFilePicker。
+			const termRef = this.$refs.xterm
+			this.trzsz = new TrzszFilter({
+				writeToTerminal: (data) => {
+					this.iconv_to_uft8.write(data)
+				},
+				sendToServer: (input) => {
+					this.iconv_to_charset.write(input)
+				},
+				terminalColumns: (termRef && termRef.terminal && termRef.terminal.cols) || 80,
+				dragInitTimeout: 3000
+			})
+
 			const write = async (data) => {
-				this.iconv_to_uft8.write(data)
+				if (this.trzsz) {
+					// zmodem.js sentry 的 to_terminal 给的是 number[]，而 trzsz 的
+					// detectAndHandleTrzsz 只认 string/ArrayBuffer/Uint8Array/Blob，
+					// 收到 Array 会静默丢 banner → 永远识别不到 trz 握手。必须转成 Uint8Array。
+					this.trzsz.processServerOutput(data instanceof Uint8Array ? data : Uint8Array.from(data))
+				} else {
+					this.iconv_to_uft8.write(data)
+				}
 			}
 			return new xzmodem({ sendTo, write })
 		},
 		onXtermKey(e) {
 			const event = e.domEvent
 			if (event.ctrlKey && event.key === "c") {
+				if (this.trzsz && this.trzsz.isTransferringFiles()) {
+					this.trzsz.stopTransferringFiles()
+				}
 				this.xzm.handleInterrupt()
 			} else if (!this.sessionConnect) {
 				if (event.key === "Enter") {
@@ -683,7 +646,33 @@ export default {
 				}
 			}
 		},
-		async handleFileDrop(files) {
+		async handleFileDrop(files, dropItems) {
+			if (!files || !files.length) {
+				return
+			}
+			// 上传协议：auto=优先 trz、超时回退 rz（默认）；trz=只用 trz；rz=只用 rz（会话高级配置 uploadProtocol）
+			const proto = (this.options && this.options.uploadProtocol) || "auto"
+			// 优先 trzsz：远端装了 trz/tsz 时走 trz（实时进度条/断点续传/目录/无 4GB 限制）。
+			// 渲染层是浏览器模式，必须传原始 DataTransferItemList（库从中取 FileSystemEntry）。
+			if (this.trzsz && proto !== "rz" && typeof DataTransferItemList !== "undefined" && dropItems instanceof DataTransferItemList) {
+				try {
+					await this.trzsz.uploadFiles(dropItems)
+					return
+				} catch (err) {
+					// 库在 dragInitTimeout 内没等到握手横幅时以字符串 "Upload does not start" reject
+					// ——即远端没有 trz 命令，此时回退 rz；其他错误（如用户取消）不回退
+					const msg = err && err.message ? err.message : err
+					if (msg !== "Upload does not start") {
+						console.log("trz upload error:", err)
+						return
+					}
+					if (proto === "trz") {
+						console.log("trz not available on remote (protocol locked to trz, no rz fallback)")
+						return
+					}
+					console.log("trz not available on remote, fallback to rz")
+				}
+			}
 			for (let i = 0; i < files.length; i++) {
 				let file = files[i]
 				try {
@@ -696,7 +685,12 @@ export default {
 		},
 		onXtermData(data) {
 			if (this.sessionConnect) {
-				this.iconv_to_charset.write(data)
+				// 空闲时 filter 直通到 iconv_to_charset，行为与原来完全一致；trzsz 传输中接管
+				if (this.trzsz) {
+					this.trzsz.processTerminalInput(data)
+				} else {
+					this.iconv_to_charset.write(data)
+				}
 				if (this.enableSendToAllTerm) {
 					this.sendToAllTerm(data)
 				}
@@ -705,12 +699,21 @@ export default {
 			}
 		},
 		onXtermResize(cols, rows) {
+			if (this.trzsz) {
+				this.trzsz.setTerminalColumns(cols)
+			}
 			this.sessionInstance && this.sessionInstance.emit("resize", cols, rows)
 		},
 		onTitleChange(title) {
 			const currentPath = this.extractPathFromTerminalTitle(title)
 			this.title = currentPath
 			this.$emit("titleChange", { sessionId: this.sessionInstanceId, title: currentPath })
+		},
+		onCwdChange(cwd) {
+			if (cwd && typeof cwd === "string") {
+				this.cwd = cwd
+				this.$emit("cwdChange", { sessionId: this.sessionInstanceId, cwd: cwd })
+			}
 		},
 		handleCopy() {
 			let s = this.$refs.xterm.getSelection()

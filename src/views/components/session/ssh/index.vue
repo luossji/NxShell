@@ -227,6 +227,15 @@
 								<span>{{ t("home.profile.connect.sftp-dirt.title") }}</span>
 								<el-input v-model="sshSubForm.sftpDirt" style="width: 200px" />
 							</n-space>
+							<n-space fill align="space-between">
+								<!--拖拽上传协议-->
+								<span>{{ t("home.profile.connect.upload-protocol.title") }}</span>
+								<el-select v-model="sshSubForm.uploadProtocol" style="width: 200px">
+									<el-option :label="t('home.profile.connect.upload-protocol.auto')" value="auto" />
+									<el-option label="trz (trzsz)" value="trz" />
+									<el-option label="rz (lrzsz)" value="rz" />
+								</el-select>
+							</n-space>
 						</n-space>
 					</el-tab-pane>
 				</el-tabs>
@@ -287,7 +296,8 @@ const defaultForm = {
 	proxyHost: "",
 	proxyPort: 1080,
 	forward: "none",
-	sftpDirt: "/",
+	sftpDirt: "~",
+	uploadProtocol: "auto",
 	keepAliveInterval: 60,
 	keepAliveCountMax: 3,
 	readyTimeout: 20000,
@@ -311,7 +321,8 @@ const sessionManager = proxy.$sessionManager
 const sessionConfig = ref()
 const { group } = storeToRefs(sessionStore)
 const showModal = (sessionId) => {
-	sessionStore.updateProcess()
+	// 仅刷新分组下拉选项；不要重建左侧菜单树，否则会清空搜索过滤结果
+	sessionStore.refreshGroups()
 	const currentGroupId = sessionStore.currentNode.isFolder ? sessionStore.currentNode.sessionId : sessionStore.currentNode.node?.parent?.data?.id
 	if (!!sessionId) {
 		isEdit.value = true

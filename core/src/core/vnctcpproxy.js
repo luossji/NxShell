@@ -37,6 +37,9 @@ class WebSocket {
     }
 
     get readyState() {
+        if (!this._socket) {
+            return this.CLOSED;
+        }
         const state = this._socket.readyState;
         if(state === "opening") {
             return this.CONNECTING;
@@ -78,11 +81,19 @@ class WebSocket {
     }
 
     send(b) {
+        if (!this._socket) {
+            return;
+        }
         this._socket.write(b)
     }
 
     close() {
-
+        // noVNC 断开时会调用 close()，必须真正销毁底层 TCP 连接，否则连接泄漏
+        if (this._socket) {
+            this._socket.removeAllListeners();
+            this._socket.destroy();
+            this._socket = null;
+        }
     }
 
 }
