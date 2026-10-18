@@ -27,7 +27,11 @@
 					<i class="el-icon-upload" />
 				</span>
 			</el-tooltip>
+<<<<<<< HEAD
 		</pt-toolbar>
+=======
+	</pt-toolbar>
+>>>>>>> 232777d08159aa6f917a93dba675245944104cbf
 		<div ref="screen" class="screen" :style="screenStyle">
 			<!-- This is where the remote screen will appear -->
 		</div>
@@ -113,6 +117,52 @@ export default {
 				this.clipBusy = false
 			})
 		},
+<<<<<<< HEAD
+		onPushLocalClipboard(text) {
+			if (this.clipBusy) {
+				return
+			}
+			if (typeof text !== 'string') {
+				text = powertools.clipboardReadText()
+			}
+=======
+		isVncFocused() {
+			const activeElement = document.activeElement
+			return !!(this.$refs.screen && activeElement && this.$refs.screen.contains(activeElement))
+		},
+		syncLocalClipboardToRemote() {
+			const text = powertools.clipboardReadText()
+>>>>>>> 232777d08159aa6f917a93dba675245944104cbf
+			if (typeof text !== 'string' || !text.length) {
+				this.warn(this.$t('home.session-instance.vnc-clip-local-empty'))
+				return
+			}
+			this.clipBusy = true
+			this.lastClipboardText = text
+<<<<<<< HEAD
+=======
+			// macOS 屏幕共享不接收 RFB ClientCutText，改走 SSH 剪贴板桥推送
+			this.onPushLocalClipboard(text)
+		},
+		onPullRemoteClipboard() {
+			if (this.clipBusy) {
+				return
+			}
+			this.clipBusy = true
+			pullRemoteClipboardText(this.host).then((text) => {
+				if (!text) {
+					this.warn(this.$t('home.session-instance.vnc-clip-empty'))
+					return
+				}
+				this.lastClipboardText = text
+				powertools.clipboardWriteText(text)
+				Message.success(this.$t('home.session-instance.vnc-clip-pulled'))
+			}).catch((e) => {
+				this.handleClipboardBridgeError(e)
+			}).finally(() => {
+				this.clipBusy = false
+			})
+		},
 		onPushLocalClipboard(text) {
 			if (this.clipBusy) {
 				return
@@ -126,6 +176,7 @@ export default {
 			}
 			this.clipBusy = true
 			this.lastClipboardText = text
+>>>>>>> 232777d08159aa6f917a93dba675245944104cbf
 			pushLocalClipboardText(this.host, text).then(() => {
 				Message.success(this.$t('home.session-instance.vnc-clip-pushed'))
 			}).catch((e) => {
