@@ -17,6 +17,16 @@
 					<i class="el-icon-refresh" />
 				</span>
 			</el-tooltip>
+			<el-tooltip slot="right" class="item" effect="dark" :content="$t('home.session-instance.vnc-clip-pull')" placement="top-start">
+				<span class="btn" @click="onPullRemoteClipboard">
+					<i class="el-icon-download" />
+				</span>
+			</el-tooltip>
+			<el-tooltip slot="right" class="item" effect="dark" :content="$t('home.session-instance.vnc-clip-push')" placement="top-start">
+				<span class="btn" @click="onPushLocalClipboard">
+					<i class="el-icon-upload" />
+				</span>
+			</el-tooltip>
 		</pt-toolbar>
 		<div ref="screen" class="screen" :style="screenStyle">
 			<!-- This is where the remote screen will appear -->
@@ -31,8 +41,10 @@ import FileView from '../components/fileview/fileview'
 import PtAuthDialog from '../components/auth/auth'
 import RFB from '@novnc/novnc/core/rfb.js'
 import { isNativeScreenSharingSupported, launchNativeScreenSharing } from '@/services/vncSession'
+import { pullRemoteClipboard as pullRemoteClipboardText, pushLocalClipboard as pushLocalClipboardText, CLIP_ERR } from '@/services/vncClipboardBridge'
 import * as EventBus from '../../services/eventbus'
 import { getProfile } from '@/services/globalSetting'
+import { Message } from 'element-ui'
 
 export default {
 	name: 'PtVncView',
@@ -58,6 +70,7 @@ export default {
 			showSessionToolbar: !getProfile('xterm')?.hideSessionShortcutBar,
 			url: '',
 			lastClipboardText: '',
+			clipBusy: false,
 			sessionInstance: null,
 			sessionCloseHandler: null,
 			suppressDisconnectWarning: false
@@ -75,42 +88,63 @@ export default {
 	mounted() {
 		this.init()
 		EventBus.subscript('toggle-session-shortcut-bar', this.handleToggleShortcutBarEvent)
-		window.addEventListener('keydown', this.handleClipboardShortcut, true)
 	},
 
 	methods: {
 		handleAuthOk(data) {
 			this.sessionInstance.sendControlData(data)
 		},
-		handleClipboardShortcut(e) {
-			if (!this.rfb || !this.isVncFocused()) {
+		onPullRemoteClipboard() {
+			if (this.clipBusy) {
 				return
 			}
-
-			const isPasteShortcut = (e.ctrlKey || e.metaKey) && e.key?.toLowerCase?.() === 'v'
-			const isShiftInsert = e.shiftKey && e.key === 'Insert'
-			if (!isPasteShortcut && !isShiftInsert) {
-				return
-			}
-
-			this.syncLocalClipboardToRemote()
+			this.clipBusy = true
+			pullRemoteClipboardText(this.host).then((text) => {
+				if (!text) {
+					this.warn(this.$t('home.session-instance.vnc-clip-empty'))
+					return
+				}
+				this.lastClipboardText = text
+				powertools.clipboardWriteText(text)
+				Message.success(this.$t('home.session-instance.vnc-clip-pulled'))
+			}).catch((e) => {
+				this.handleClipboardBridgeError(e)
+			}).finally(() => {
+				this.clipBusy = false
+			})
 		},
-		isVncFocused() {
-			const activeElement = document.activeElement
-			return !!(this.$refs.screen && activeElement && this.$refs.screen.contains(activeElement))
-		},
-		syncLocalClipboardToRemote() {
-			if (!this.rfb) {
+		onPushLocalClipboard(text) {
+			if (this.clipBusy) {
 				return
 			}
-
-			const text = powertools.clipboardReadText()
+			if (typeof text !== 'string') {
+				text = powertools.clipboardReadText()
+			}
 			if (typeof text !== 'string' || !text.length) {
+				this.warn(this.$t('home.session-instance.vnc-clip-local-empty'))
 				return
 			}
-
+			this.clipBusy = true
 			this.lastClipboardText = text
-			this.rfb.clipboardPasteFrom(text)
+			pushLocalClipboardText(this.host, text).then(() => {
+				Message.success(this.$t('home.session-instance.vnc-clip-pushed'))
+			}).catch((e) => {
+				this.handleClipboardBridgeError(e)
+			}).finally(() => {
+				this.clipBusy = false
+			})
+		},
+		handleClipboardBridgeError(e) {
+			const code = e && e.code
+			if (code === CLIP_ERR.NO_SSH_SESSION) {
+				this.warn(this.$t('home.session-instance.vnc-clip-no-ssh', {host: this.host}))
+			} else if (code === CLIP_ERR.SSH_TIMEOUT) {
+				this.warn(this.$t('home.session-instance.vnc-clip-timeout'))
+			} else if (code === CLIP_ERR.PBTOOLS_MISSING) {
+				this.warn(this.$t('home.session-instance.vnc-clip-pbtools-missing'))
+			} else {
+				this.warn(this.$t('home.session-instance.vnc-clip-failed', {msg: (e && e.message) || ''}))
+			}
 		},
 		init() {
 			// RFB holds the API to connect and communicate with a VNC server
@@ -335,7 +369,6 @@ export default {
 
 	async beforeDestroy() {
 		EventBus.unsubscript('toggle-session-shortcut-bar', this.handleToggleShortcutBarEvent)
-		window.removeEventListener('keydown', this.handleClipboardShortcut, true)
 		this.detachSessionCloseHandler()
 		this.cleanupRfb({ hardClose: true, suppressWarning: true })
 		if (this.resizeObject) {
