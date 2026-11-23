@@ -142,6 +142,9 @@
             "create": "新建",
             "create-folder": "新建会话文件夹",
             "create-session": "新建会话",
+            "sort": "排序",
+            "sort-name-asc": "按名称升序",
+            "sort-name-desc": "按名称降序",
             "save-config": "导出配置文件",
             "import-config": "导入配置文件",
             "rename": "重命名"

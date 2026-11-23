@@ -142,6 +142,9 @@
             "create": "Create",
             "create-folder": "Create session folder",
             "create-session": "Create session",
+            "sort": "Sort",
+            "sort-name-asc": "Sort by name (A-Z)",
+            "sort-name-desc": "Sort by name (Z-A)",
             "save-config": "Export config",
             "import-config": "Import config",
             "rename": "Rename"

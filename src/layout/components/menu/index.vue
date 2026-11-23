@@ -369,6 +369,72 @@ const createSessionSubmenu = () => [
 	}
 ]
 
+/**
+ * 解析右键位置对应的会话目录：
+ * - 空白处：根目录
+ * - 文件夹：该文件夹自身
+ * - 会话：会话所在目录
+ */
+const resolveSortableParent = () => {
+	const sessionData = currentNode.value.sessionData?.data
+	if (!sessionData?._id) {
+		return null
+	}
+	const sessionConfig = sessionManager.getSessionConfigById(sessionData._id)
+	if (!sessionConfig) {
+		return null
+	}
+	if (sessionConfig.type === SESSION_CONFIG_TYPE.FOLDER) {
+		return sessionConfig
+	}
+	return sessionConfig._parent || null
+}
+
+const compareSessionConfigByName = (a, b, order) => {
+	// 文件夹始终排在会话前面，升降序只影响同类节点
+	const aIsFolder = a.type === SESSION_CONFIG_TYPE.FOLDER
+	const bIsFolder = b.type === SESSION_CONFIG_TYPE.FOLDER
+	if (aIsFolder !== bIsFolder) {
+		return aIsFolder ? -1 : 1
+	}
+	const result = String(a.name || "").localeCompare(String(b.name || ""), "zh-CN", {
+		numeric: true,
+		sensitivity: "base"
+	})
+	return order === "desc" ? -result : result
+}
+
+/**
+ * 按名称排序右键位置的同一级会话列表，并持久化数组顺序
+ */
+const handleSort = async (order) => {
+	const parent = resolveSortableParent()
+	const children = parent ? parent.subSessions : sessionManager.getSessionConfigs()
+	if (!children || children.length < 2) {
+		return
+	}
+	const sorted = [...children].sort((a, b) => compareSessionConfigByName(a, b, order))
+	if (sorted.every((item, index) => item === children[index])) {
+		return
+	}
+	children.splice(0, children.length, ...sorted)
+	await sessionManager.saveSessionConfigs()
+	sessionStore.updateProcess()
+}
+
+const createSortSubmenu = () => [
+	{
+		label: "home.sessions-context-menu.sort-name-asc",
+		type: "normal",
+		handler: () => handleSort("asc")
+	},
+	{
+		label: "home.sessions-context-menu.sort-name-desc",
+		type: "normal",
+		handler: () => handleSort("desc")
+	}
+]
+
 const contextMenus = {
 	folder: [
 		{
@@ -380,6 +446,11 @@ const contextMenus = {
 			label: "home.sessions-context-menu.create-session",
 			type: "submenu",
 			submenu: createSessionSubmenu()
+		},
+		{
+			label: "home.sessions-context-menu.sort",
+			type: "submenu",
+			submenu: createSortSubmenu()
 		},
 		{
 			label: "home.sessions-context-menu.cut",
@@ -412,6 +483,11 @@ const contextMenus = {
 			label: "home.sessions-context-menu.connect",
 			type: "normal",
 			handler: () => handleHostOpen(currentNode.value.sessionData.data)
+		},
+		{
+			label: "home.sessions-context-menu.sort",
+			type: "submenu",
+			submenu: createSortSubmenu()
 		},
 		{
 			label: "home.sessions-context-menu.cut",
@@ -448,6 +524,11 @@ const contextMenus = {
 			label: "home.sessions-context-menu.create-session",
 			type: "submenu",
 			submenu: createSessionSubmenu()
+		},
+		{
+			label: "home.sessions-context-menu.sort",
+			type: "submenu",
+			submenu: createSortSubmenu()
 		},
 		{
 			label: "home.sessions-context-menu.save-config",
